@@ -1,0 +1,84 @@
+# WillMake - the generic makefile
+#  Supported environmental vars:
+#	 CC - compiler
+#	 CFLAGS - compiler flags
+#	 LFLAGS - linker flags
+#  INCLUDE_FOLDERS - folders to user as -I inputs
+#  OBJECT_FOLDERS - folders to build .cpps in (should end each with '/' - otherwise could be used to filter inputs)
+#  OUTPUT_DIR - directory to output to (should end with '/' - otherwise could be used to add prefix to each file output).
+#  ADDITIONAL_SEARCH_PATHS - ability to add stuff to VPATH, useful if using OBJECT_FOLDERS like filters.
+
+.PHONY: check-environment clean testecho
+
+#Target Path
+WILL_TARGET=$(OUTPUT_DIR)$(TARGET)
+
+#Check environment and then build
+default: check-environment $(OUTPUT_DIR) $(WILL_TARGET)
+
+$(OUTPUT_DIR):
+	mkdir -p $(OUTPUT_DIR)
+
+#Include directories for compiler
+WILL_INCLUDES=$(addprefix -I , $(INCLUDE_FOLDERS))
+
+#Grab list of objects to make (if outdir defined, strip directories and add output directory
+ifndef OUTPUT_DIR
+WILL_OBJECTS=$(patsubst %.cpp, %.o, $(wildcard $(OBJECT_FOLDERS:=*.cpp)))
+else
+WILL_OBJECTS=$(addprefix $(OUTPUT_DIR), $(notdir $(patsubst %.cpp, %.o, $(wildcard $(OBJECT_FOLDERS:=*.cpp)))))
+VPATH=$(OBJECT_FOLDERS) $(ADDITIONAL_SEARCH_PATHS)
+endif
+
+#Main rule to make target 
+$(WILL_TARGET): $(WILL_OBJECTS) 
+	$(CC) $(WILL_OBJECTS) $(LFLAGS) -o $@
+
+#Compiling objects (when compile we produce dependency list silently)
+$(OUTPUT_DIR)%.o: %.cpp
+	$(CC) $(CFLAGS) -c $(WILL_INCLUDES) $< -o $@
+	@$(CC) $(CFLAGS) $(WILL_INCLUDES) -MM -MT $(OUTPUT_DIR)$*.o -MF $(OUTPUT_DIR)$*.d $<
+
+#include all dependency lists
+ifndef OUTPUT_DIR
+WILL_DEPENDENCY_INCLUDES = $(OBJECT_FOLDERS:=*.d)
+else
+WILL_DEPENDENCY_INCLUDES = $(OUTPUT_DIR)*.d
+endif
+
+-include $(WILL_DEPENDENCY_INCLUDES)
+
+#need this rule to stop us failing if dependency list contains non existent file (before rebuild)
+%.cpp %.h:
+
+#make clean
+clean:
+ifdef OUTPUT_DIR
+	-rm -rf $(OUTPUT_DIR)*.d
+	-rm -rf $(OUTPUT_DIR)*.o
+	-rm -rf $(OUTPUT_DIR)*.gdb
+	-rm -rf $(WILL_TARGET)
+	
+else
+	-rm -f $(OBJECT_FOLDERS:=*.d)
+	-rm -f $(OBJECT_FOLDERS:=*.o)
+	-rm -f *.gdb
+	-rm -f $(TARGET)
+endif
+
+#Check environment before build
+check-environment:
+ifndef OBJECT_FOLDERS
+	$(error OBJECT_FOLDERS is undefined, perhaps you want a . for current dir)
+endif
+ifndef CC
+	$(error CC (compiler) is undefined)
+endif
+
+#For debugging
+testecho:
+	@echo Include Paths: $(WILL_INCLUDES)
+	@echo 
+	@echo Objects To Build: $(WILL_OBJECTS)
+	@echo 
+	@echo Dependencies Loaded: $(WILL_DEPENDENCY_INCLUDES)
